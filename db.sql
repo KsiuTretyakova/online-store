@@ -1,22 +1,27 @@
 -- Створіть таблиці для товарів, клієнтів, замовлень і позицій у замовленнях.
+-- products: товари
+-- customers: клієнти
+-- orders: замовлення
+-- order_items: позиції у замовленні
 
 -- таблиця товарів
 CREATE TABLE products (
-  id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
-  category TEXT NOT NULL,
-  price NUMERIC(10,2) CHECK (price >= 0)
+  id SERIAL PRIMARY KEY, -- унікальний ідентифікатор
+  name TEXT NOT NULL, -- назва товару
+  category TEXT NOT NULL, -- категорія (наприклад, "Електроніка")
+  price NUMERIC(10,2) CHECK (price >= 0) -- ціна з перевіркою
 );
 
 -- таблиця клієнтів
 CREATE TABLE customers (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
-  email TEXT UNIQUE,
+  email TEXT UNIQUE, -- унікальний email
   city TEXT
 );
 
 -- таблиця замовлень
+-- ON DELETE CASCADE гарантує цілісність: якщо видалити клієнта, його замовлення теж зникнуть
 CREATE TABLE orders (
   id SERIAL PRIMARY KEY,
   customer_id INTEGER 
@@ -25,6 +30,7 @@ CREATE TABLE orders (
 );
 
 -- таблиця позицій у замовленні
+-- order_items реалізує зв’язок “багато‑до‑багатьох” між замовленнями та товарами
 CREATE TABLE order_items (
   order_id INTEGER 
   REFERENCES orders(id) ON DELETE CASCADE,
@@ -34,7 +40,7 @@ CREATE TABLE order_items (
   PRIMARY KEY (order_id, product_id)
 );
 
--- Заповніть їх тестовими даними (мінімум 5 товарів, 3 клієнти, 3 замовлення).
+-- Заповніть їх тестовими даними (мінімум 5 товарів, 3 клієнти, 3 замовлення)
 
 -- Додаємо товари
 INSERT INTO products (name, category, price) VALUES
@@ -64,7 +70,7 @@ VALUES
 (3, 5, 2); -- Iryna (3), Water, 2
 
 
--- Реалізуйте CRUD‑операції для таблиці products.
+-- Реалізуйте CRUD‑операції для таблиці products
 
 -- CRUD операції для таблиці products
 -- CREATE: додати новий товар
@@ -82,7 +88,7 @@ DELETE FROM products WHERE name = 'Keyboard';
 
 -- Побудуйте звіти:
 
--- Кількість замовлень по клієнтах.
+-- Кількість замовлень по клієнтах
 SELECT c.name, COUNT(o.id) AS orders_count
 FROM customers c
 LEFT JOIN orders o ON o.customer_id = c.id
@@ -90,7 +96,7 @@ GROUP BY c.id, c.name
 ORDER BY orders_count DESC;
 
 
--- Сумарна вартість кожного замовлення.
+-- Сумарна вартість кожного замовлення
 SELECT 
   o.id AS order_id, 
   SUM(oi.quantity * p.price) AS order_total
@@ -101,33 +107,57 @@ GROUP BY o.id
 ORDER BY order_total DESC;
 
 
--- Топ‑3 найдорожчі товари.
+-- Топ‑3 найдорожчі товари
 SELECT name, price
 FROM products
 ORDER BY price DESC
 LIMIT 3;
 
 -- ----------------------------
+-- Топ‑3 найдорожчі товари в кожній категорії
+-- Використовуємо віконну функцію ROW_NUMBER() для ранжування товарів у кожній категорії
+-- Потім вибираємо лише ті з них, які мають ранг 3 або менше
+-- 
+-- Внутрішній запит створює тимчасову таблицю з рангами товарів
+-- Зовнішній запит фільтрує ці дані
+-- 
+-- PARTITION BY category означає, що нумерація починається заново для кожної категорії
+-- ORDER BY price DESC визначає порядок нумерації (від найдорожчих до найдешевших)
+-- 
+-- Результат сортуємо за категорією і ціною у спадному порядку
+-- Таким чином отримуємо топ‑3 товари в кожній категорії
+-- Використання віконних функцій дозволяє ефективно виконувати складні аналітичні запити
+-- без необхідності складних підзапитів або тимчасових таблиць
+
 SELECT category, name, price
 FROM (
   SELECT category, name, price,
-  ROW_NUMBER() OVER 
-  (PARTITION BY category ORDER BY price DESC) 
+  ROW_NUMBER() OVER -- віконна функція для нумерації рядків
+  (PARTITION BY category ORDER BY price DESC) -- розділяємо нумерацію за категоріями
   AS rank_in_category
   FROM products1
-) ranked
-WHERE rank_in_category <= 3
+) ranked -- ranked - це псевдонім для тимчасової таблиці, створеної всередині підзапиту
+WHERE rank_in_category <= 3 -- вибираємо лише топ‑3
 ORDER BY category, price DESC;
 -- ----------------------------
 
--- Використайте транзакцію для створення замовлення з кількома товарами.
+-- Використайте транзакцію для створення замовлення з кількома товарами
+-- Транзакція гарантує, що всі операції будуть виконані разом
+-- або жодна з них не буде виконана (у разі помилки)
+-- Якщо щось піде не так - можна зробити ROLLBACK
+-- Починаємо транзакцію
 BEGIN;
+-- Створюємо нове замовлення для Taras (id=2)
 INSERT INTO orders (customer_id) VALUES (2); -- Taras
+-- Додаємо товари до цього замовлення
 INSERT INTO order_items (order_id, product_id, quantity)
 VALUES 
 (4, 2, 3),
 (4, 5, 2),
 (4, 4, 1);
+-- Фіксуємо транзакцію
 COMMIT;
 
--- Створіть view, яке показує кількість замовлень і витрати клієнтів.
+-- Створіть view, яке показує кількість замовлень і витрати клієнтів
+-- View дозволяє швидко отримати звіт без повторного написання складного запиту
+-- Використовуйте це view для отримання списку клієнтів, відсортованого за витратами
